@@ -1,10 +1,13 @@
 package org.fortishop.edgeservice.response;
 
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.fortishop.edgeservice.domain.Member;
 
 @Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
 @AllArgsConstructor
 public class MemberResponse {
     private Long id;

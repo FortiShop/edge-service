@@ -24,7 +24,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @RequiredArgsConstructor
 public class JwtVerificationFilter extends OncePerRequestFilter {
     private static final List<String> EXCLUDED_PATHS =
-            List.of("/api/auths/reissue", "/api/members/check-nickname", "/api/members/check-email");
+            List.of("/api/members/signup", "/api/members/check-nickname",
+                    "/api/members/check-email", "/api/auths/reissue");
     private final JwtTokenProvider jwtTokenProvider;
     private final RedisService redisService;
     private static final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());

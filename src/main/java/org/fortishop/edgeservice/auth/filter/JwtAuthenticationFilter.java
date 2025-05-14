@@ -1,17 +1,21 @@
 package org.fortishop.edgeservice.auth.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.auth.TokenDto;
 import org.fortishop.edgeservice.auth.jwt.JwtTokenProvider;
 import org.fortishop.edgeservice.request.LoginRequest;
+import org.fortishop.edgeservice.service.RefreshTokenService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -24,6 +28,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
 
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
+    private final RefreshTokenService refreshTokenService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -52,12 +57,17 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
             throws IOException, ServletException {
 
         PrincipalDetails principal = (PrincipalDetails) authResult.getPrincipal();
-
         TokenDto tokenDto = jwtTokenProvider.generateTokenDto(principal);
 
         jwtTokenProvider.accessTokenSetHeader(tokenDto.getAccessToken(), response);
-
         jwtTokenProvider.setTokenCookie("refreshToken", tokenDto.getRefreshToken(), response);
+
+        Claims claims = jwtTokenProvider.parseClaims(tokenDto.getRefreshToken());
+        LocalDateTime expiresAt = claims.getExpiration().toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+
+        refreshTokenService.save(principal.getUsername(), tokenDto.getRefreshToken(), expiresAt);
 
         response.setStatus(HttpServletResponse.SC_OK);
         log.info("[JwtAuthenticationFilter] 로그인 성공: {}", principal.getUsername());

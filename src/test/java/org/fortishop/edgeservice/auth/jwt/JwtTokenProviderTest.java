@@ -23,14 +23,15 @@ class JwtTokenProviderTest {
 
     @BeforeEach
     void setUp() {
-        JwtProperties jwtProperties = new JwtProperties(
-                "my-super-secure-very-long-jwt-secret-key-which-is-at-least-32-bytes",
-                1000L * 60 * 30,  // access: 30분
-                1000L * 60 * 60 * 24 * 7  // refresh: 7일
-        );
+        JwtProperties jwtProperties = new JwtProperties();
+        jwtProperties.setSecret("my-super-secure-very-long-jwt-secret-key-which-is-at-least-32-bytes");
+        jwtProperties.setAccessTokenValidity(1000L * 60 * 30);  // 30분
+        jwtProperties.setRefreshTokenValidity(1000L * 60 * 60 * 24 * 7);  // 7일
+
         jwtTokenProvider = new JwtTokenProvider(jwtProperties);
         jwtTokenProvider.init(); // @PostConstruct 수동 호출
     }
+
 
     @Test
     @DisplayName("AccessToken, RefreshToken 생성 및 파싱 성공")

@@ -65,20 +65,20 @@ public class MemberController {
     }
 
     @GetMapping("/check-email")
-    public ResponseEntity<Void> checkEmailDuplicate(@RequestParam String email) {
+    public ResponseEntity<Void> checkEmailDuplicate(@RequestParam(name = "email") String email) {
         memberService.checkEmailDuplicate(email);
         return Responder.success(HttpStatus.OK);
     }
 
     @GetMapping("/check-nickname")
-    public ResponseEntity<Void> checkNicknameDuplicate(@RequestParam String nickname) {
+    public ResponseEntity<Void> checkNicknameDuplicate(@RequestParam(name = "nickname") String nickname) {
         memberService.checkNicknameDuplicate(nickname);
         return Responder.success(HttpStatus.OK);
     }
 
     @GetMapping
-    public ResponseEntity<MemberPageResponse> getMembers(@RequestParam(defaultValue = "0") int offset,
-                                                         @RequestParam(defaultValue = "20") int limit) {
+    public ResponseEntity<MemberPageResponse> getMembers(@RequestParam(defaultValue = "0", name = "offset") int offset,
+                                                         @RequestParam(defaultValue = "20", name = "limit") int limit) {
         return Responder.success(memberService.getMembers(offset, limit));
     }
 

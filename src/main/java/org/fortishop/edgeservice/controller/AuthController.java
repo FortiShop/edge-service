@@ -7,11 +7,11 @@ import org.fortishop.edgeservice.auth.jwt.JwtTokenProvider;
 import org.fortishop.edgeservice.global.Responder;
 import org.fortishop.edgeservice.service.RefreshTokenService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Repository;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-@Repository
+@RestController
 @RequestMapping("/api/auths")
 @RequiredArgsConstructor
 public class AuthController {
@@ -20,7 +20,6 @@ public class AuthController {
 
     @PatchMapping("/reissue")
     public ResponseEntity<String> reissue(HttpServletRequest request, HttpServletResponse response) {
-        String refreshToken = jwtTokenProvider.resolveRefreshToken(request);
         refreshTokenService.reissueAccessToken(request, response);
         return Responder.success("토큰 재발급이 완료되었습니다.");
     }

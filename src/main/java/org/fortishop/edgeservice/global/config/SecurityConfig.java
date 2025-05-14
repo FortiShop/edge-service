@@ -10,6 +10,7 @@ import org.fortishop.edgeservice.auth.filter.JwtAuthenticationFilter;
 import org.fortishop.edgeservice.auth.filter.JwtVerificationFilter;
 import org.fortishop.edgeservice.auth.jwt.JwtTokenProvider;
 import org.fortishop.edgeservice.global.redis.RedisService;
+import org.fortishop.edgeservice.service.RefreshTokenService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -38,6 +39,7 @@ public class SecurityConfig {
     private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
     private final JwtTokenProvider jwtTokenProvider;
     private final RedisService redisService;
+    private final RefreshTokenService refreshTokenService;
     private final PrincipalDetailsService principalDetailsService;
     private final PasswordEncoder passwordEncoder;
 
@@ -55,8 +57,8 @@ public class SecurityConfig {
                         .accessDeniedHandler(customAccessDeniedHandler))
                 .with(new CustomFilterConfigurer(), Customizer.withDefaults())
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
-                        .requestMatchers("/auth/reissue",
-                                "/members/nickname-check/**", "/actuator/**")
+                        .requestMatchers("/api/members/signup", "/api/members/check-nickname",
+                                "/api/members/check-email", "/api/auths/reissue", "/actuator/**")
                         .permitAll()
                         .anyRequest().authenticated())
                 .logout(logout -> logout.deleteCookies("JSESSIONID")
@@ -105,7 +107,7 @@ public class SecurityConfig {
             builder.addFilterBefore(filter, JwtAuthenticationFilter.class);
             AuthenticationManager authenticationManager = builder.getSharedObject(AuthenticationManager.class);
             JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(authenticationManager,
-                    jwtTokenProvider);
+                    jwtTokenProvider, refreshTokenService);
             JwtVerificationFilter jwtVerificationFilter = new JwtVerificationFilter(jwtTokenProvider, redisService);
             jwtAuthenticationFilter.setFilterProcessesUrl("/api/auths/login");
             builder

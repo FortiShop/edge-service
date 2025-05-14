@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -98,6 +99,29 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         redisService.setValues(accessToken, "logout", Duration.ofMillis(accessTokenExpirationMillis));
 
         log.info("[Logout] {} 로그아웃 성공. RefreshToken 삭제, AccessToken 블랙리스트 등록", email);
+    }
 
+    @Override
+    @Transactional
+    public void save(String email, String refreshToken, LocalDateTime expiresAt) {
+        Member member = memberRepository.findByEmail(email)
+                .orElseThrow(() -> new MemberException(MemberExceptionType.MEMBER_NOT_FOUND));
+        refreshTokenRepository.findByMember(member)
+                .ifPresentOrElse(
+                        existing -> {
+                            existing.updateToken(refreshToken, expiresAt);
+                            refreshTokenRepository.save(existing);
+                        },
+                        () -> {
+                            RefreshToken token = RefreshToken.builder()
+                                    .member(member)
+                                    .token(refreshToken)
+                                    .expiresAt(expiresAt)
+                                    .build();
+                            refreshTokenRepository.save(token);
+                        }
+                );
+        
+        log.info("[RefreshTokenService] refresh token 저장 완료: {}", member.getEmail());
     }
 }
