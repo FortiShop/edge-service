@@ -1,19 +1,18 @@
 package org.fortishop.edgeservice.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.fortishop.edgeservice.domain.Member;
 
 @Getter
+@AllArgsConstructor
 public class MemberResponse {
-    private final Long id;
-    private final String email;
-    private final String nickname;
-    private final String role;
+    private Long id;
+    private String email;
+    private String nickname;
+    private String role;
 
-    public MemberResponse(Member member) {
-        this.id = member.getId();
-        this.email = member.getEmail();
-        this.nickname = member.getNickname();
-        this.role = member.getRole().name();
+    public static MemberResponse of(Member member) {
+        return new MemberResponse(member.getId(), member.getEmail(), member.getNickname(), member.getRole().toString());
     }
 }
