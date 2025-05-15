@@ -3,11 +3,17 @@ package org.fortishop.edgeservice;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.Objects;
+import java.util.UUID;
 import org.fortishop.edgeservice.domain.Member;
+import org.fortishop.edgeservice.domain.MemberPoint;
+import org.fortishop.edgeservice.domain.PointSourceService;
 import org.fortishop.edgeservice.domain.RefreshToken;
 import org.fortishop.edgeservice.domain.Role;
+import org.fortishop.edgeservice.repository.MemberPointRepository;
 import org.fortishop.edgeservice.repository.MemberRepository;
+import org.fortishop.edgeservice.repository.PointHistoryRepository;
 import org.fortishop.edgeservice.repository.RefreshTokenRepository;
 import org.fortishop.edgeservice.request.LoginRequest;
 import org.fortishop.edgeservice.request.MemberUpdateNicknameRequest;
@@ -15,6 +21,8 @@ import org.fortishop.edgeservice.request.PasswordUpdateRequest;
 import org.fortishop.edgeservice.request.SignupRequest;
 import org.fortishop.edgeservice.response.MemberResponse;
 import org.fortishop.edgeservice.response.MemberUpdateNicknameResponse;
+import org.fortishop.edgeservice.service.PointService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,7 +69,16 @@ public class EdgeServiceIntegrationTest {
     MemberRepository memberRepository;
 
     @Autowired
+    PointService pointService;
+
+    @Autowired
+    MemberPointRepository memberPointRepository;
+
+    @Autowired
     RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
+    PointHistoryRepository pointHistoryRepository;
 
     @Container
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
@@ -101,7 +118,7 @@ public class EdgeServiceIntegrationTest {
     void setUpUser(TestInfo testInfo) {
         String methodName = testInfo.getTestMethod().map(Method::getName).orElse("");
         if (methodName.contains("checkEmailDuplicate") || methodName.contains("checkNicknameDuplicate")
-                || methodName.contains("signup_duplicateEmail") || methodName.contains("login_wrongPassword") ||
+                || methodName.contains("login_wrongPassword") ||
                 methodName.contains("reissueWithFakeRefreshToken_fail")) {
             return;
         }
@@ -125,6 +142,13 @@ public class EdgeServiceIntegrationTest {
         }
 
         System.out.println("AccessToken: " + accessToken);
+    }
+
+    @AfterEach
+    void deleteUser() {
+        Member member = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        member.markDeleted();
+        memberRepository.save(member);
     }
 
     @Test
@@ -343,7 +367,8 @@ public class EdgeServiceIntegrationTest {
                 new HttpEntity<>(reissueHeaders),
                 Void.class
         );
-        String adminAccessToken = reissueRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION).substring(7);
+        String adminAccessToken = Objects.requireNonNull(reissueRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+                .substring(7);
 
         // 전체 회원 조회
         HttpHeaders headers = new HttpHeaders();
@@ -403,7 +428,8 @@ public class EdgeServiceIntegrationTest {
                 new HttpEntity<>(reissueHeaders),
                 Void.class
         );
-        String adminToken = reissueRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION).substring(7);
+        String adminToken = Objects.requireNonNull(reissueRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+                .substring(7);
 
         // 권한 변경 요청
         HttpHeaders headers = new HttpHeaders();
@@ -465,11 +491,231 @@ public class EdgeServiceIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    @DisplayName("포인트 적립에 성공하고 잔액이 DB에 반영된다")
+    void adjustPoint_save_success() {
+        Member member = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        savePoint(member.getId(), 3000);
+
+        MemberPoint updatedPoint = memberPointRepository.findByMember(member)
+                .orElseThrow(() -> new AssertionError("MemberPoint 없음"));
+        assertThat(updatedPoint.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(3000));
+    }
+
+    @Test
+    @DisplayName("포인트 차감에 성공하고 잔액이 감소한다")
+    void adjustPoint_use_success() {
+        Member member = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        String adminAccessToken = savePoint(member.getId(), 3000);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminAccessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String transactionId = UUID.randomUUID().toString();
+        String traceId = UUID.randomUUID().toString().substring(0, 5);
+        String body = """
+                    {
+                      "memberId": %d,
+                      "amount": 1000,
+                      "changeType": "USE",
+                      "description": "차감",
+                      "transactionId": "%s",
+                      "traceId": "%s"
+                    }
+                """.formatted(member.getId(), transactionId, traceId);
+
+        HttpEntity<String> entity = new HttpEntity<>(body, headers);
+
+        ResponseEntity<Void> response = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/points/adjust",
+                entity,
+                Void.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        MemberPoint updated = memberPointRepository.findByMember(member).orElseThrow();
+        assertThat(updated.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+    }
+
+    @Test
+    @DisplayName("포인트 차감 시 잔액 부족으로 실패한다")
+    void adjustPoint_use_fail_dueToInsufficient() {
+        Member member = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        String adminAccessToken = savePoint(member.getId(), 3000);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminAccessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String transactionId = UUID.randomUUID().toString();
+        String traceId = UUID.randomUUID().toString().substring(0, 5);
+        String body = """
+                    {
+                      "memberId": %d,
+                      "amount": 5000,
+                      "changeType": "USE",
+                      "description": "초과 차감",
+                      "transactionId": "%s",
+                      "traceId": "%s"
+                    }
+                """.formatted(member.getId(), transactionId, traceId);
+
+        HttpEntity<String> entity = new HttpEntity<>(body, headers);
+
+        ResponseEntity<Void> response = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/points/adjust",
+                entity,
+                Void.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    @DisplayName("중복 트랜잭션 ID는 두 번째 요청을 무시한다")
+    void adjustPoint_duplicateTransactionId_ignored() {
+        Member member = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        String adminAccessToken = savePoint(member.getId(), 3000);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminAccessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        String txId = UUID.randomUUID().toString();
+
+        String body = """
+                    {
+                      "memberId": %d,
+                      "amount": 2000,
+                      "changeType": "SAVE",
+                      "description": "중복 테스트",
+                      "transactionId": "%s",
+                      "traceId": "%s"
+                    }
+                """.formatted(member.getId(), txId, UUID.randomUUID());
+
+        HttpEntity<String> entity = new HttpEntity<>(body, headers);
+
+        ResponseEntity<Void> first = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/points/adjust",
+                entity,
+                Void.class);
+        pointHistoryRepository.flush();
+        ResponseEntity<Void> second = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/points/adjust",
+                entity,
+                Void.class);
+
+        MemberPoint point = memberPointRepository.findByMember(member).orElseThrow();
+        assertThat(point.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(5000));
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    @DisplayName("포인트 전송 시 송신자 차감, 수신자 적립이 정상적으로 처리된다")
+    void transferPoint_success() {
+        Member member = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        savePoint(member.getId(), 3000);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        String receiverEmail = "receiver-" + UUID.randomUUID() + "@fortishop.com";
+        restTemplate.postForEntity(getBaseUrl() + "/signup",
+                new SignupRequest(receiverEmail, "pw1234", "수신자"), Void.class);
+        Member receiver = memberRepository.findByEmail(receiverEmail).orElseThrow();
+        String senderTransactionId = UUID.randomUUID().toString();
+        String senderTraceId = UUID.randomUUID().toString().substring(0, 5);
+        String receiverTransactionId = UUID.randomUUID().toString();
+        String receiverTraceId = UUID.randomUUID().toString().substring(0, 5);
+        String body = """
+                    {
+                      "receiverId": %d,
+                      "amount": 1000,
+                      "reason": "선물",
+                      "senderTransactionId": "%s",
+                      "senderTraceId": "%s",
+                      "receiverTransactionId": "%s",
+                      "receiverTraceId": "%s"
+                    }
+                """.formatted(receiver.getId(), senderTransactionId, senderTraceId, receiverTransactionId,
+                receiverTraceId);
+
+        HttpEntity<String> entity = new HttpEntity<>(body, headers);
+
+        ResponseEntity<Void> res = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/points/transfer",
+                entity,
+                Void.class);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Member sender = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        MemberPoint senderPoint = memberPointRepository.findByMember(sender).orElseThrow();
+        MemberPoint receiverPoint = memberPointRepository.findByMember(receiver).orElseThrow();
+
+        assertThat(senderPoint.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+        assertThat(receiverPoint.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1000));
+    }
+
     private RefreshToken getRefreshTokenFromDB() {
         Member member = memberRepository.findByEmail("test@fortishop.com")
                 .orElseThrow(() -> new IllegalArgumentException("회원 없음: " + "test@fortishop.com"));
 
         return refreshTokenRepository.findByMember(member)
                 .orElseThrow(() -> new IllegalArgumentException("RefreshToken 없음: " + "test@fortishop.com"));
+    }
+
+    private String savePoint(Long memberId, int amount) {
+        String uniqueId = String.valueOf(System.currentTimeMillis());
+        String email = "admin-" + uniqueId + "@fortishop.com";
+        String nickname = "관리자-" + uniqueId;
+
+        restTemplate.postForEntity(getBaseUrl() + "/signup", new SignupRequest(email, "admin123", nickname),
+                Void.class);
+
+        // 로그인
+        LoginRequest login = new LoginRequest(email, "admin123");
+        HttpHeaders loginHeaders = new HttpHeaders();
+        loginHeaders.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Void> loginRes = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/auths/login",
+                new HttpEntity<>(login, loginHeaders),
+                Void.class
+        );
+
+        String accessToken = Objects.requireNonNull(loginRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+                .substring(7);
+        String refreshTokenCookie = loginRes.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+
+        // 관리자 권한 부여
+        Member admin = memberRepository.findByEmail(email).orElseThrow();
+        admin.updateRole(Role.ROLE_ADMIN);
+        memberRepository.save(admin);
+
+        // 토큰 재발급
+        HttpHeaders reissueHeaders = new HttpHeaders();
+        reissueHeaders.setBearerAuth(accessToken);
+        reissueHeaders.set(HttpHeaders.COOKIE, refreshTokenCookie);
+        ResponseEntity<Void> reissueRes = restTemplate.exchange(
+                "http://localhost:" + port + "/api/auths/reissue",
+                HttpMethod.PATCH,
+                new HttpEntity<>(reissueHeaders),
+                Void.class
+        );
+        String adminAccessToken = Objects.requireNonNull(reissueRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+                .substring(7);
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("회원 없음: " + "test@fortishop.com"));
+        String transactionId = UUID.randomUUID().toString();
+        String traceId = "test-trace-id";
+        PointSourceService sourceService = PointSourceService.MEMBER_ADJUST;
+        BigDecimal amountDec = BigDecimal.valueOf(amount);
+        pointService.savePoint(member.getEmail(), amountDec, "포인트 적립", transactionId, traceId, sourceService);
+
+        return adminAccessToken;
     }
 }

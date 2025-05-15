@@ -6,9 +6,11 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.domain.Member;
+import org.fortishop.edgeservice.domain.MemberPoint;
 import org.fortishop.edgeservice.domain.Role;
 import org.fortishop.edgeservice.exception.Member.MemberException;
 import org.fortishop.edgeservice.exception.Member.MemberExceptionType;
+import org.fortishop.edgeservice.repository.MemberPointRepository;
 import org.fortishop.edgeservice.repository.MemberRepository;
 import org.fortishop.edgeservice.request.MemberUpdateNicknameRequest;
 import org.fortishop.edgeservice.request.PasswordUpdateRequest;
@@ -25,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberServiceImpl implements MemberService {
 
     private final MemberRepository memberRepository;
+    private final MemberPointRepository memberPointRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -38,6 +41,13 @@ public class MemberServiceImpl implements MemberService {
                     passwordEncoder.encode(signupRequest.getPassword()),
                     signupRequest.getNickname()
             );
+
+            memberPointRepository.findByMember(deletedMember)
+                    .ifPresentOrElse(
+                            MemberPoint::resetToZero,
+                            () -> memberPointRepository.save(new MemberPoint(deletedMember))
+                    );
+
             return MemberResponse.of(deletedMember);
         }
 
@@ -52,7 +62,10 @@ public class MemberServiceImpl implements MemberService {
                 .deleted(false)
                 .build();
 
-        return MemberResponse.of(memberRepository.save(member));
+        memberRepository.save(member);
+        memberPointRepository.save(new MemberPoint(member));
+
+        return MemberResponse.of(member);
     }
 
     @Override

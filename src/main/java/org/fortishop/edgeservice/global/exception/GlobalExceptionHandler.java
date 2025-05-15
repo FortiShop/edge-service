@@ -35,6 +35,12 @@ public class GlobalExceptionHandler {
         return Responder.error("403", "접근이 거부되었습니다.", HttpStatus.FORBIDDEN);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
+        log.warn("IllegalArgumentException: {}", e.getMessage());
+        return Responder.error("400", "잘못된 요청입니다.", HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleEx(Exception e) {
         log.error("Unhandled Exception: {}", e.getMessage(), e);

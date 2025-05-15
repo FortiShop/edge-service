@@ -4,15 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.domain.Member;
+import org.fortishop.edgeservice.domain.MemberPoint;
 import org.fortishop.edgeservice.domain.Role;
 import org.fortishop.edgeservice.exception.Member.MemberException;
 import org.fortishop.edgeservice.exception.Member.MemberExceptionType;
+import org.fortishop.edgeservice.repository.MemberPointRepository;
 import org.fortishop.edgeservice.repository.MemberRepository;
 import org.fortishop.edgeservice.request.MemberUpdateNicknameRequest;
 import org.fortishop.edgeservice.request.PasswordUpdateRequest;
@@ -21,6 +24,7 @@ import org.fortishop.edgeservice.response.MemberPageResponse;
 import org.fortishop.edgeservice.response.MemberResponse;
 import org.fortishop.edgeservice.response.MemberUpdateNicknameResponse;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -36,6 +40,9 @@ public class MemberServiceImplTest {
     private MemberRepository memberRepository;
 
     @Mock
+    private MemberPointRepository memberPointRepository;
+
+    @Mock
     private PasswordEncoder passwordEncoder;
 
     @BeforeEach
@@ -44,12 +51,19 @@ public class MemberServiceImplTest {
     }
 
     @Test
+    @DisplayName("신규 회원 가입에 성공하고 포인트가 생성된다")
     void signup_success() {
         SignupRequest request = new SignupRequest("a@a.com", "pw1234", "nick");
+
+        given(memberRepository.findByEmailAndDeletedTrue(request.getEmail()))
+                .willReturn(Optional.empty());
+
         given(memberRepository.existsByEmail(request.getEmail())).willReturn(false);
         given(memberRepository.existsByNickname(request.getNickname())).willReturn(false);
+
         given(passwordEncoder.encode("pw1234")).willReturn("encoded");
-        given(memberRepository.save(any())).willReturn(Member.builder()
+
+        Member savedMember = Member.builder()
                 .id(1L)
                 .email(request.getEmail())
                 .nickname(request.getNickname())
@@ -57,12 +71,18 @@ public class MemberServiceImplTest {
                 .role(Role.ROLE_USER)
                 .deleted(false)
                 .createdAt(LocalDateTime.now())
-                .build());
+                .build();
+        given(memberRepository.save(any())).willReturn(savedMember);
 
+        given(memberPointRepository.save(any())).willReturn(new MemberPoint(savedMember));
+
+        // when
         MemberResponse res = memberService.signup(request);
 
+        // then
         assertThat(res.getEmail()).isEqualTo("a@a.com");
         assertThat(res.getNickname()).isEqualTo("nick");
+        verify(memberPointRepository).save(any(MemberPoint.class));
     }
 
     @Test
