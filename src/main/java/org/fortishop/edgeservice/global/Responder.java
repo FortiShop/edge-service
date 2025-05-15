@@ -1,5 +1,7 @@
 package org.fortishop.edgeservice.global;
 
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -21,4 +23,13 @@ public class Responder {
         ErrorResponse errorResponse = new ErrorResponse(errorCode, message);
         return new ResponseEntity<>(errorResponse, status);
     }
+
+    public static void error(HttpServletResponse response, String errorCode, String message, HttpStatus status)
+            throws IOException {
+        response.setStatus(status.value());
+        response.setContentType("application/json;charset=UTF-8");
+        String body = String.format("{\"errorCode\":\"%s\", \"message\":\"%s\"}", errorCode, message);
+        response.getWriter().write(body);
+    }
+
 }

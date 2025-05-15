@@ -14,6 +14,7 @@ import org.fortishop.edgeservice.response.MemberUpdateNicknameResponse;
 import org.fortishop.edgeservice.service.MemberService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -77,6 +78,7 @@ public class MemberController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
     public ResponseEntity<MemberPageResponse> getMembers(@RequestParam(defaultValue = "0", name = "offset") int offset,
                                                          @RequestParam(defaultValue = "20", name = "limit") int limit) {
         return Responder.success(memberService.getMembers(offset, limit));
@@ -84,8 +86,9 @@ public class MemberController {
 
 
     @PatchMapping("/{id}/role")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
     public ResponseEntity<Void> updateRole(@PathVariable(name = "id") Long id,
-                                           @RequestParam Role role) {
+                                           @RequestParam(name = "role") Role role) {
         memberService.updateRole(id, role);
         return Responder.success(HttpStatus.OK);
     }

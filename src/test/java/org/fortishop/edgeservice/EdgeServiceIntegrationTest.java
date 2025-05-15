@@ -3,8 +3,10 @@ package org.fortishop.edgeservice;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
+import java.util.Objects;
 import org.fortishop.edgeservice.domain.Member;
 import org.fortishop.edgeservice.domain.RefreshToken;
+import org.fortishop.edgeservice.domain.Role;
 import org.fortishop.edgeservice.repository.MemberRepository;
 import org.fortishop.edgeservice.repository.RefreshTokenRepository;
 import org.fortishop.edgeservice.request.LoginRequest;
@@ -300,6 +302,167 @@ public class EdgeServiceIntegrationTest {
         );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    @DisplayName("ROLE_ADMIN 계정으로 전체 회원 조회에 성공한다")
+    void getAllMembers_withAdminRole_success() {
+        String uniqueId = String.valueOf(System.currentTimeMillis());
+        String email = "admin-" + uniqueId + "@fortishop.com";
+        String nickname = "관리자-" + uniqueId;
+
+        restTemplate.postForEntity(getBaseUrl() + "/signup", new SignupRequest(email, "admin123", nickname),
+                Void.class);
+
+        // 로그인
+        LoginRequest login = new LoginRequest(email, "admin123");
+        HttpHeaders loginHeaders = new HttpHeaders();
+        loginHeaders.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Void> loginRes = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/auths/login",
+                new HttpEntity<>(login, loginHeaders),
+                Void.class
+        );
+
+        String accessToken = Objects.requireNonNull(loginRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+                .substring(7);
+        String refreshTokenCookie = loginRes.getHeaders().getFirst(HttpHeaders.SET_COOKIE); // refreshToken 쿠키 추출
+
+        // 관리자 권한 부여
+        Member admin = memberRepository.findByEmail(email).orElseThrow();
+        admin.updateRole(Role.ROLE_ADMIN);
+        memberRepository.save(admin);
+
+        // 토큰 재발급
+        HttpHeaders reissueHeaders = new HttpHeaders();
+        reissueHeaders.setBearerAuth(accessToken);
+        reissueHeaders.set(HttpHeaders.COOKIE, refreshTokenCookie);
+        ResponseEntity<Void> reissueRes = restTemplate.exchange(
+                "http://localhost:" + port + "/api/auths/reissue",
+                HttpMethod.PATCH,
+                new HttpEntity<>(reissueHeaders),
+                Void.class
+        );
+        String adminAccessToken = reissueRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION).substring(7);
+
+        // 전체 회원 조회
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminAccessToken);
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+        ResponseEntity<String> response = restTemplate.exchange(
+                getBaseUrl(), HttpMethod.GET, entity, String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    @DisplayName("ROLE_ADMIN 계정이 다른 사용자의 권한을 변경할 수 있다")
+    void updateRole_withAdminRole_success() {
+        String uid = String.valueOf(System.currentTimeMillis());
+
+        // 일반 유저 회원가입
+        String userEmail = "user-" + uid + "@fortishop.com";
+        String userNickname = "일반유저-" + uid;
+        restTemplate.postForEntity(getBaseUrl() + "/signup",
+                new SignupRequest(userEmail, "user123", userNickname), Void.class);
+        Member user = memberRepository.findByEmail(userEmail).orElseThrow();
+
+        // 관리자 유저 회원가입
+        String adminEmail = "admin-" + uid + "@fortishop.com";
+        String adminNickname = "관리자유저-" + uid;
+        restTemplate.postForEntity(getBaseUrl() + "/signup",
+                new SignupRequest(adminEmail, "admin123", adminNickname), Void.class);
+
+        // 로그인
+        LoginRequest login = new LoginRequest(adminEmail, "admin123");
+        HttpHeaders loginHeaders = new HttpHeaders();
+        loginHeaders.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Void> loginRes = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/auths/login",
+                new HttpEntity<>(login, loginHeaders),
+                Void.class
+        );
+
+        String accessToken = Objects.requireNonNull(loginRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+                .substring(7);
+        String refreshTokenCookie = loginRes.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+
+        // 관리자 권한 부여
+        Member admin = memberRepository.findByEmail(adminEmail).orElseThrow();
+        admin.updateRole(Role.ROLE_ADMIN);
+        memberRepository.save(admin);
+
+        // 토큰 재발급
+        HttpHeaders reissueHeaders = new HttpHeaders();
+        reissueHeaders.setBearerAuth(accessToken);
+        reissueHeaders.set(HttpHeaders.COOKIE, refreshTokenCookie);
+        ResponseEntity<Void> reissueRes = restTemplate.exchange(
+                "http://localhost:" + port + "/api/auths/reissue",
+                HttpMethod.PATCH,
+                new HttpEntity<>(reissueHeaders),
+                Void.class
+        );
+        String adminToken = reissueRes.getHeaders().getFirst(HttpHeaders.AUTHORIZATION).substring(7);
+
+        // 권한 변경 요청
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+        ResponseEntity<Void> response = restTemplate.exchange(
+                getBaseUrl() + "/" + user.getId() + "/role?role=ROLE_ADMIN",
+                HttpMethod.PATCH,
+                entity,
+                Void.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Member updated = memberRepository.findById(user.getId()).orElseThrow();
+        assertThat(updated.getRole()).isEqualTo(Role.ROLE_ADMIN);
+    }
+
+    @Test
+    @DisplayName("ROLE_USER 계정으로 전체 회원 조회를 시도하면 실패한다")
+    void getAllMembers_withUserRole_forbidden() {
+        // given
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+
+        // when
+        ResponseEntity<String> response = restTemplate.exchange(
+                getBaseUrl(), HttpMethod.GET, entity, String.class
+        );
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("ROLE_USER 계정이 다른 사용자의 권한을 변경하려 하면 실패한다")
+    void updateRole_withUserRole_forbidden() {
+        // given
+        String uid = String.valueOf(System.currentTimeMillis());
+        String targetEmail = "target-" + uid + "@fortishop.com";
+        String targetNickname = "대상유저-" + uid;
+        restTemplate.postForEntity(getBaseUrl() + "/signup",
+                new SignupRequest(targetEmail, "pw1234", targetNickname), Void.class);
+        Member target = memberRepository.findByEmail(targetEmail).orElseThrow();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+
+        // when
+        ResponseEntity<Void> response = restTemplate.exchange(
+                getBaseUrl() + "/" + target.getId() + "/role?role=ROLE_ADMIN",
+                HttpMethod.PATCH,
+                entity,
+                Void.class
+        );
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     private RefreshToken getRefreshTokenFromDB() {
