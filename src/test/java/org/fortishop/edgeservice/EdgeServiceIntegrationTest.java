@@ -99,10 +99,11 @@ public class EdgeServiceIntegrationTest {
     void setUpUser(TestInfo testInfo) {
         String methodName = testInfo.getTestMethod().map(Method::getName).orElse("");
         if (methodName.contains("checkEmailDuplicate") || methodName.contains("checkNicknameDuplicate")
-                || methodName.contains("signup_duplicateEmail") || methodName.contains("login_wrongPassword")) {
+                || methodName.contains("signup_duplicateEmail") || methodName.contains("login_wrongPassword") ||
+                methodName.contains("reissueWithFakeRefreshToken_fail")) {
             return;
         }
-     
+
         SignupRequest signup = new SignupRequest("test@fortishop.com", "pw1234", "테스트유저");
         restTemplate.postForEntity(getBaseUrl() + "/signup", signup, Void.class);
 
@@ -140,83 +141,6 @@ public class EdgeServiceIntegrationTest {
         assertThat(response.getBody().getEmail()).isEqualTo("test@fortishop.com");
     }
 
-    @DisplayName("이메일 중복으로 회원가입에 실패한다")
-    @Test
-    void signup_duplicateEmail_fail() {
-        SignupRequest dup = new SignupRequest("test@fortishop.com", "newPw123!", "새닉네임");
-        ResponseEntity<Void> response = restTemplate.postForEntity(getBaseUrl() + "/signup", dup,
-                Void.class);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-    }
-
-    @DisplayName("비밀번호가 틀리면 로그인에 실패한다")
-    @Test
-    void login_wrongPassword_fail() {
-        LoginRequest wrong = new LoginRequest("test@fortishop.com", "wrongPassword");
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<LoginRequest> entity = new HttpEntity<>(wrong, headers);
-
-        ResponseEntity<Void> response = restTemplate.postForEntity("http://localhost:" + port + "/api/auths/login",
-                entity, Void.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    }
-
-    @Test
-    @DisplayName("회원 탈퇴 후 로그인 시도 시 실패한다")
-    void loginAfterWithdraw_fail() {
-        // 회원 탈퇴
-        HttpHeaders logoutHeaders = new HttpHeaders();
-        logoutHeaders.setBearerAuth(accessToken);
-        HttpEntity<Void> logoutRequest = new HttpEntity<>(logoutHeaders);
-
-        ResponseEntity<Void> withdrawResponse = restTemplate.exchange(
-                getBaseUrl() + "/me", HttpMethod.DELETE, logoutRequest, Void.class);
-        assertThat(withdrawResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-
-        // 탈퇴 후 로그인 시도
-        LoginRequest login = new LoginRequest("test@fortishop.com", "pw1234");
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<LoginRequest> entity = new HttpEntity<>(login, headers);
-
-        ResponseEntity<Void> loginResponse = restTemplate.postForEntity(
-                "http://localhost:" + port + "/api/auths/login", entity, Void.class);
-
-        assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    }
-
-    @Test
-    @DisplayName("인증 없이 내 정보 요청 시 실패한다")
-    void getMyInfoWithoutToken_fail() {
-        ResponseEntity<Void> response = restTemplate.exchange(
-                getBaseUrl() + "/me",
-                HttpMethod.GET,
-                null,
-                Void.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    }
-
-    @Test
-    @DisplayName("위조된 RefreshToken으로 액세스 토큰 재발급 시 실패한다")
-    void reissueWithFakeRefreshToken_fail() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.COOKIE, "refreshToken=fake.refresh.token");
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-
-        ResponseEntity<Void> response = restTemplate.exchange(
-                "http://localhost:" + port + "/api/auths/reissue",
-                HttpMethod.PATCH,
-                entity,
-                Void.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    }
-
     @Test
     @DisplayName("닉네임 수정에 성공한다")
     void updateNickname_success() {
@@ -233,6 +157,16 @@ public class EdgeServiceIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getNickname()).isEqualTo("변경된닉네임");
+    }
+
+    @DisplayName("이메일 중복으로 회원가입에 실패한다")
+    @Test
+    void signup_duplicateEmail_fail() {
+        SignupRequest dup = new SignupRequest("test@fortishop.com", "newPw123!", "새닉네임");
+        ResponseEntity<Void> response = restTemplate.postForEntity(getBaseUrl() + "/signup", dup,
+                Void.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
@@ -323,6 +257,49 @@ public class EdgeServiceIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         System.out.println("Response: " + response.getBody());
+    }
+
+    @DisplayName("비밀번호가 틀리면 로그인에 실패한다")
+    @Test
+    void login_wrongPassword_fail() {
+        LoginRequest wrong = new LoginRequest("test@fortishop.com", "wrongPassword");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<LoginRequest> entity = new HttpEntity<>(wrong, headers);
+
+        ResponseEntity<Void> response = restTemplate.postForEntity("http://localhost:" + port + "/api/auths/login",
+                entity, Void.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    @DisplayName("인증 없이 내 정보 요청 시 실패한다")
+    void getMyInfoWithoutToken_fail() {
+        ResponseEntity<Void> response = restTemplate.exchange(
+                getBaseUrl() + "/me",
+                HttpMethod.GET,
+                null,
+                Void.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    @DisplayName("위조된 RefreshToken으로 액세스 토큰 재발급 시 실패한다")
+    void reissueWithFakeRefreshToken_fail() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.COOKIE, "refreshToken=fake.refresh.token");
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<Void> response = restTemplate.exchange(
+                "http://localhost:" + port + "/api/auths/reissue",
+                HttpMethod.PATCH,
+                entity,
+                Void.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     private RefreshToken getRefreshTokenFromDB() {

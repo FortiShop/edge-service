@@ -53,6 +53,10 @@ public class Member {
         this.deleted = true;
     }
 
+    public void unmarkDeleted() {
+        this.deleted = false;
+    }
+
     public void updatePassword(String newPassword) {
         this.password = newPassword;
     }
@@ -63,5 +67,13 @@ public class Member {
 
     public void updateRole(Role role) {
         this.role = role;
+    }
+
+    public void restore(String encodedPassword, String newNickname) {
+        this.deleted = false;
+        this.password = encodedPassword;
+        this.nickname = newNickname;
+        this.createdAt = LocalDateTime.now();
+        this.role = Role.ROLE_USER;
     }
 }

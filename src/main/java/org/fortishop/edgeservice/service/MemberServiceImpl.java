@@ -2,6 +2,7 @@ package org.fortishop.edgeservice.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.domain.Member;
@@ -29,6 +30,17 @@ public class MemberServiceImpl implements MemberService {
     @Override
     @Transactional
     public MemberResponse signup(SignupRequest signupRequest) {
+        Optional<Member> deletedMemberOpt = memberRepository.findByEmailAndDeletedTrue(signupRequest.getEmail());
+
+        if (deletedMemberOpt.isPresent()) {
+            Member deletedMember = deletedMemberOpt.get();
+            deletedMember.restore(
+                    passwordEncoder.encode(signupRequest.getPassword()),
+                    signupRequest.getNickname()
+            );
+            return MemberResponse.of(deletedMember);
+        }
+
         validateDuplicate(signupRequest.getEmail(), signupRequest.getNickname());
 
         Member member = Member.builder()
@@ -111,7 +123,6 @@ public class MemberServiceImpl implements MemberService {
 
         return new MemberPageResponse(content, offset, limit, total);
     }
-
 
     /**
      * 권한 변경 (관리자용)
