@@ -27,6 +27,19 @@ spring:
     username: guest
     password: guest
 
+  kafka:
+    consumer:
+      group-id: point-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: '*'
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      
 jwt:
   secret: test-jwt-secret-key-for-test-use-only
   access-token-validity: 1800000

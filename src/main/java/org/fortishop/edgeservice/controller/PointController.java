@@ -4,11 +4,13 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.domain.PointSourceService;
-import org.fortishop.edgeservice.request.PointAdjustRequest;
-import org.fortishop.edgeservice.request.PointTransferRequest;
-import org.fortishop.edgeservice.response.PointHistoryResponse;
-import org.fortishop.edgeservice.response.PointResponse;
+import org.fortishop.edgeservice.global.Responder;
+import org.fortishop.edgeservice.dto.request.PointAdjustRequest;
+import org.fortishop.edgeservice.dto.request.PointTransferRequest;
+import org.fortishop.edgeservice.dto.response.PointHistoryResponse;
+import org.fortishop.edgeservice.dto.response.PointResponse;
 import org.fortishop.edgeservice.service.PointService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,14 +29,14 @@ public class PointController {
     @GetMapping
     public ResponseEntity<PointResponse> getMyPoint(@AuthenticationPrincipal PrincipalDetails principal) {
         String email = principal.getUsername();
-        return ResponseEntity.ok(pointService.getMyPoint(email));
+        return Responder.success(pointService.getMyPoint(email));
     }
 
     @GetMapping("/history")
     public ResponseEntity<List<PointHistoryResponse>> getMyHistory(
             @AuthenticationPrincipal PrincipalDetails principal) {
         String email = principal.getUsername();
-        return ResponseEntity.ok(pointService.getMyHistory(email));
+        return Responder.success(pointService.getMyHistory(email));
     }
 
     @PostMapping("/transfer")
@@ -45,7 +47,7 @@ public class PointController {
                 request,
                 PointSourceService.MEMBER_TRANSFER
         );
-        return ResponseEntity.ok().build();
+        return Responder.success(HttpStatus.OK);
     }
 
     @PostMapping("/adjust")
@@ -57,6 +59,6 @@ public class PointController {
                 principal.getUsername(),
                 PointSourceService.MEMBER_ADJUST
         );
-        return ResponseEntity.ok().build();
+        return Responder.success(HttpStatus.OK);
     }
 }

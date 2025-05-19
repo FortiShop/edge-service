@@ -1,28 +1,49 @@
 package org.fortishop.edgeservice;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.PortBinding;
+import com.github.dockerjava.api.model.Ports;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.fortishop.edgeservice.domain.Member;
 import org.fortishop.edgeservice.domain.MemberPoint;
 import org.fortishop.edgeservice.domain.PointSourceService;
 import org.fortishop.edgeservice.domain.RefreshToken;
 import org.fortishop.edgeservice.domain.Role;
+import org.fortishop.edgeservice.dto.event.PointChangedEvent;
+import org.fortishop.edgeservice.dto.request.LoginRequest;
+import org.fortishop.edgeservice.dto.request.MemberUpdateNicknameRequest;
+import org.fortishop.edgeservice.dto.request.PasswordUpdateRequest;
+import org.fortishop.edgeservice.dto.request.SignupRequest;
+import org.fortishop.edgeservice.dto.response.MemberResponse;
+import org.fortishop.edgeservice.dto.response.MemberUpdateNicknameResponse;
 import org.fortishop.edgeservice.repository.MemberPointRepository;
 import org.fortishop.edgeservice.repository.MemberRepository;
 import org.fortishop.edgeservice.repository.PointHistoryRepository;
 import org.fortishop.edgeservice.repository.RefreshTokenRepository;
-import org.fortishop.edgeservice.request.LoginRequest;
-import org.fortishop.edgeservice.request.MemberUpdateNicknameRequest;
-import org.fortishop.edgeservice.request.PasswordUpdateRequest;
-import org.fortishop.edgeservice.request.SignupRequest;
-import org.fortishop.edgeservice.response.MemberResponse;
-import org.fortishop.edgeservice.response.MemberUpdateNicknameResponse;
 import org.fortishop.edgeservice.service.PointService;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,14 +59,18 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.Network;
 import org.testcontainers.containers.RabbitMQContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -80,6 +105,10 @@ public class EdgeServiceIntegrationTest {
     @Autowired
     PointHistoryRepository pointHistoryRepository;
 
+    @Autowired
+    KafkaTemplate<String, Object> kafkaTemplate;
+
+
     @Container
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
             .withDatabaseName("fortishop")
@@ -93,11 +122,57 @@ public class EdgeServiceIntegrationTest {
     static GenericContainer<?> redis = new GenericContainer<>("redis:7.2.1")
             .withExposedPorts(6379);
 
+    @Container
+    static GenericContainer<?> zookeeper = new GenericContainer<>(DockerImageName.parse("bitnami/zookeeper:3.8.1"))
+            .withEnv("ALLOW_ANONYMOUS_LOGIN", "yes")
+            .withExposedPorts(2181)
+            .withNetwork(Network.SHARED)
+            .withNetworkAliases("zookeeper");
+
+    @Container
+    static GenericContainer<?> kafka = new GenericContainer<>(DockerImageName.parse("bitnami/kafka:3.6.0"))
+            .withExposedPorts(9092, 9093)
+            .withNetwork(Network.SHARED)
+            .withNetworkAliases("kafka")
+            .withCreateContainerCmdModifier(cmd -> {
+                cmd.withHostName("kafka");
+                cmd.withHostConfig(
+                        Objects.requireNonNull(cmd.getHostConfig())
+                                .withPortBindings(
+                                        new PortBinding(Ports.Binding.bindPort(9092), new ExposedPort(9092)),
+                                        new PortBinding(Ports.Binding.bindPort(9093), new ExposedPort(9093))
+                                )
+                );
+            })
+            .withEnv("KAFKA_BROKER_ID", "1")
+            .withEnv("ALLOW_PLAINTEXT_LISTENER", "yes")
+            .withEnv("KAFKA_CFG_ZOOKEEPER_CONNECT", "zookeeper:2181")
+            .withEnv("KAFKA_CFG_LISTENERS", "PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093")
+            .withEnv("KAFKA_CFG_ADVERTISED_LISTENERS",
+                    "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9093")
+            .withEnv("KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP",
+                    "PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT")
+            .withEnv("KAFKA_INTER_BROKER_LISTENER_NAME", "PLAINTEXT")
+            .withEnv("KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE", "true")
+            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+] started.*\\n", 1));
+
+    @Container
+    static GenericContainer<?> kafkaUi = new GenericContainer<>(DockerImageName.parse("provectuslabs/kafka-ui:latest"))
+            .withExposedPorts(8080)
+            .withEnv("KAFKA_CLUSTERS_0_NAME", "fortishop-cluster")
+            .withEnv("KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS", "PLAINTEXT://kafka:9092")
+            .withEnv("KAFKA_CLUSTERS_0_ZOOKEEPER", "zookeeper:2181")
+            .withNetwork(Network.SHARED)
+            .withNetworkAliases("kafka-ui");
+
     @DynamicPropertySource
     static void overrideProps(DynamicPropertyRegistry registry) {
         mysql.start();
         rabbit.start();
         redis.start();
+        zookeeper.start();
+        kafka.start();
+        kafkaUi.start();
 
         registry.add("spring.datasource.url", mysql::getJdbcUrl);
         registry.add("spring.datasource.username", mysql::getUsername);
@@ -106,12 +181,25 @@ public class EdgeServiceIntegrationTest {
         registry.add("spring.rabbitmq.port", () -> rabbit.getMappedPort(5672));
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
+        registry.add("spring.kafka.bootstrap-servers", () -> kafka.getHost() + ":" + kafka.getMappedPort(9093));
     }
 
     private String accessToken;
 
     private String getBaseUrl() {
         return "http://localhost:" + port + "/api/members";
+    }
+
+    private static boolean topicCreated = false;
+
+    @BeforeAll
+    static void printKafkaUiUrl() throws Exception {
+        System.out.println("Kafka UI is available at: http://" + kafkaUi.getHost() + ":" + kafkaUi.getMappedPort(8080));
+        if (!topicCreated) {
+            String bootstrap = kafka.getHost() + ":" + kafka.getMappedPort(9093);
+            createTopicIfNotExists("point.changed", bootstrap);
+            topicCreated = true;
+        }
     }
 
     @BeforeEach
@@ -660,6 +748,58 @@ public class EdgeServiceIntegrationTest {
         assertThat(receiverPoint.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1000));
     }
 
+    @Test
+    @DisplayName("Kafka 이벤트 기반 포인트 적립 처리 - 성공")
+    void handlePointChangedEvent_success() throws Exception {
+        // Given
+        Member member = memberRepository.findByEmail("test@fortishop.com").orElseThrow();
+        String bootstrapServers = kafka.getHost() + ":" + kafka.getMappedPort(9093);
+
+        // Kafka topic 존재 여부 대기 (point.changed)
+        try (AdminClient admin = AdminClient.create(
+                Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers))) {
+            await()
+                    .atMost(Duration.ofSeconds(10))
+                    .pollInterval(Duration.ofMillis(500))
+                    .until(() -> admin.listTopics().names().get().contains("point.changed"));
+        }
+
+        String transactionId = UUID.randomUUID().toString();
+        String traceId = UUID.randomUUID().toString().substring(0, 8);
+
+        PointChangedEvent event = PointChangedEvent.builder()
+                .memberId(member.getId())
+                .orderId(9999L)
+                .changeType("SAVE")
+                .amount(BigDecimal.valueOf(1500))
+                .reason("적립 테스트")
+                .transactionId(transactionId)
+                .timestamp(LocalDateTime.now().toString())
+                .traceId(traceId)
+                .sourceService("ORDER_REWARD")
+                .build();
+
+        // When: Kafka 메시지 발행
+        KafkaProducer<String, Object> producer = new KafkaProducer<>(Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+                org.springframework.kafka.support.serializer.JsonSerializer.class
+        ));
+        producer.send(new ProducerRecord<>("point.changed", member.getId().toString(), event));
+        producer.flush();
+        producer.close();
+
+        // Then: 적립금 반영 여부 확인
+        await()
+                .atMost(Duration.ofSeconds(10))
+                .pollInterval(Duration.ofMillis(300))
+                .untilAsserted(() -> {
+                    MemberPoint point = memberPointRepository.findByMember(member).orElseThrow();
+                    assertThat(point.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1500));
+                });
+    }
+
     private RefreshToken getRefreshTokenFromDB() {
         Member member = memberRepository.findByEmail("test@fortishop.com")
                 .orElseThrow(() -> new IllegalArgumentException("회원 없음: " + "test@fortishop.com"));
@@ -717,5 +857,28 @@ public class EdgeServiceIntegrationTest {
         pointService.savePoint(member.getEmail(), amountDec, "포인트 적립", transactionId, traceId, sourceService);
 
         return adminAccessToken;
+    }
+
+    private static void createTopicIfNotExists(String topic, String bootstrapServers) {
+        Properties config = new Properties();
+        config.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+
+        try (AdminClient admin = AdminClient.create(config)) {
+            Set<String> existingTopics = admin.listTopics().names().get(3, TimeUnit.SECONDS);
+            if (!existingTopics.contains(topic)) {
+                try {
+                    admin.createTopics(List.of(new NewTopic(topic, 1, (short) 1)))
+                            .all().get(3, TimeUnit.SECONDS);
+                } catch (ExecutionException e) {
+                    if (e.getCause() instanceof org.apache.kafka.common.errors.TopicExistsException) {
+                        System.out.println("Topic already exists: " + topic);
+                    } else {
+                        throw e;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to check or create topic: " + topic, e);
+        }
     }
 }

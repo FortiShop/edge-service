@@ -14,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.auth.TokenDto;
 import org.fortishop.edgeservice.auth.jwt.JwtTokenProvider;
-import org.fortishop.edgeservice.request.LoginRequest;
+import org.fortishop.edgeservice.dto.request.LoginRequest;
 import org.fortishop.edgeservice.service.RefreshTokenService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;

@@ -11,15 +11,15 @@ import org.fortishop.edgeservice.domain.MemberPoint;
 import org.fortishop.edgeservice.domain.PointChangeType;
 import org.fortishop.edgeservice.domain.PointHistory;
 import org.fortishop.edgeservice.domain.PointSourceService;
+import org.fortishop.edgeservice.dto.request.PointAdjustRequest;
+import org.fortishop.edgeservice.dto.request.PointTransferRequest;
+import org.fortishop.edgeservice.dto.response.PointHistoryResponse;
+import org.fortishop.edgeservice.dto.response.PointResponse;
 import org.fortishop.edgeservice.exception.Member.MemberException;
 import org.fortishop.edgeservice.exception.Member.MemberExceptionType;
 import org.fortishop.edgeservice.repository.MemberPointRepository;
 import org.fortishop.edgeservice.repository.MemberRepository;
 import org.fortishop.edgeservice.repository.PointHistoryRepository;
-import org.fortishop.edgeservice.request.PointAdjustRequest;
-import org.fortishop.edgeservice.request.PointTransferRequest;
-import org.fortishop.edgeservice.response.PointHistoryResponse;
-import org.fortishop.edgeservice.response.PointResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -198,6 +198,65 @@ public class PointServiceImpl implements PointService {
                 .traceId(request.getTraceId())
                 .sourceService(sourceService)
                 .build());
+    }
+
+    @Override
+    @Transactional
+    public void savePoint(Long memberId, BigDecimal amount, String reason,
+                          String transactionId, String traceId, PointSourceService sourceService) {
+        if (isDuplicateTransaction(transactionId)) {
+            return;
+        }
+
+        Member member = getMemberById(memberId);
+        MemberPoint point = memberPointRepository.findByMember(member)
+                .orElseGet(() -> memberPointRepository.save(new MemberPoint(member)));
+
+        point.add(amount);
+
+        pointHistoryRepository.save(PointHistory.builder()
+                .member(member)
+                .changeType(PointChangeType.SAVE)
+                .amount(amount)
+                .description(reason)
+                .transactionId(transactionId)
+                .traceId(traceId)
+                .sourceService(sourceService)
+                .build());
+    }
+
+    @Override
+    @Transactional
+    public void usePoint(Long memberId, BigDecimal amount, String reason,
+                         String transactionId, String traceId, PointSourceService sourceService) {
+        if (isDuplicateTransaction(transactionId)) {
+            return;
+        }
+
+        Member member = getMemberById(memberId);
+        MemberPoint point = memberPointRepository.findByMember(member)
+                .orElseThrow(() -> new IllegalStateException("포인트 정보가 없습니다."));
+
+        if (point.getAmount().compareTo(amount) < 0) {
+            throw new IllegalArgumentException("잔액이 부족합니다.");
+        }
+
+        point.subtract(amount);
+
+        pointHistoryRepository.save(PointHistory.builder()
+                .member(member)
+                .changeType(PointChangeType.USE)
+                .amount(amount)
+                .description(reason)
+                .transactionId(transactionId)
+                .traceId(traceId)
+                .sourceService(sourceService)
+                .build());
+    }
+
+    private Member getMemberById(Long memberId) {
+        return memberRepository.findById(memberId)
+                .orElseThrow(() -> new MemberException(MemberExceptionType.MEMBER_NOT_FOUND));
     }
 
     private Member getMemberByEmail(String email) {

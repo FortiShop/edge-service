@@ -2,12 +2,12 @@ package org.fortishop.edgeservice.service;
 
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.domain.Role;
-import org.fortishop.edgeservice.request.MemberUpdateNicknameRequest;
-import org.fortishop.edgeservice.request.PasswordUpdateRequest;
-import org.fortishop.edgeservice.request.SignupRequest;
-import org.fortishop.edgeservice.response.MemberPageResponse;
-import org.fortishop.edgeservice.response.MemberResponse;
-import org.fortishop.edgeservice.response.MemberUpdateNicknameResponse;
+import org.fortishop.edgeservice.dto.request.MemberUpdateNicknameRequest;
+import org.fortishop.edgeservice.dto.request.PasswordUpdateRequest;
+import org.fortishop.edgeservice.dto.request.SignupRequest;
+import org.fortishop.edgeservice.dto.response.MemberPageResponse;
+import org.fortishop.edgeservice.dto.response.MemberResponse;
+import org.fortishop.edgeservice.dto.response.MemberUpdateNicknameResponse;
 
 public interface MemberService {
     MemberResponse signup(SignupRequest request);
@@ -26,6 +26,6 @@ public interface MemberService {
     void checkNicknameDuplicate(String nickname);
 
     MemberPageResponse getMembers(int offset, int limit);
-    
+
     void updateRole(Long memberId, Role newRole);
 }

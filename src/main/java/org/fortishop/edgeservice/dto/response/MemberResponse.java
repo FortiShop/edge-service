@@ -1,4 +1,4 @@
-package org.fortishop.edgeservice.response;
+package org.fortishop.edgeservice.dto.response;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -9,11 +9,13 @@ import org.fortishop.edgeservice.domain.Member;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
 @AllArgsConstructor
-public class MemberUpdateNicknameResponse {
+public class MemberResponse {
+    private Long id;
     private String email;
     private String nickname;
+    private String role;
 
-    public static MemberUpdateNicknameResponse of(Member member) {
-        return new MemberUpdateNicknameResponse(member.getEmail(), member.getNickname());
+    public static MemberResponse of(Member member) {
+        return new MemberResponse(member.getId(), member.getEmail(), member.getNickname(), member.getRole().toString());
     }
 }

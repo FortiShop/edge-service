@@ -1,4 +1,4 @@
-package org.fortishop.edgeservice.response;
+package org.fortishop.edgeservice.dto.response;
 
 import java.util.List;
 import lombok.AccessLevel;

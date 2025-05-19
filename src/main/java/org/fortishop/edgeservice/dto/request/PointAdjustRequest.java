@@ -1,4 +1,4 @@
-package org.fortishop.edgeservice.request;
+package org.fortishop.edgeservice.dto.request;
 
 import java.math.BigDecimal;
 import lombok.AllArgsConstructor;
