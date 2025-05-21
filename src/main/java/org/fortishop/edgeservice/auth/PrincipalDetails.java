@@ -48,6 +48,10 @@ public class PrincipalDetails extends Member implements UserDetails {
     public String getPassword() {
         return this.password;
     }
+    
+    public String getRoleName() {
+        return this.role;
+    }
 
     @Override
     public Long getId() {
