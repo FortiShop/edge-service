@@ -18,7 +18,8 @@ public class AddMemberRoleFilter implements Filter {
 
     private static final List<String> EXCLUDED_PATHS =
             List.of("/api/members/signup", "/api/members/check-nickname",
-                    "/api/members/check-email", "/api/auths/reissue");
+                    "/api/members/check-email", "/api/auths/reissue", "/actuator", "/actuator/",
+                    "/actuator/prometheus");
 
     @Override
     public void doFilter(jakarta.servlet.ServletRequest request,

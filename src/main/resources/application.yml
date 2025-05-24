@@ -21,4 +21,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: refresh, health, bus-refresh
+        include: "*"
+  metrics:
+    enable:
+      all: true

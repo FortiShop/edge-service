@@ -25,7 +25,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class JwtVerificationFilter extends OncePerRequestFilter {
     private static final List<String> EXCLUDED_PATHS =
             List.of("/api/members/signup", "/api/members/check-nickname",
-                    "/api/members/check-email", "/api/auths/reissue");
+                    "/api/members/check-email", "/api/auths/reissue", "/actuator", "/actuator/",
+                    "/actuator/prometheus");
     private final JwtTokenProvider jwtTokenProvider;
     private final RedisService redisService;
     private static final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -82,7 +83,8 @@ public class JwtVerificationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(@NotNull HttpServletRequest request) {
         log.info("Request URI excluded from JwtVerificationFilter");
-        return EXCLUDED_PATHS.stream().anyMatch(exclude -> exclude.equalsIgnoreCase(request.getServletPath()));
+        String path = request.getServletPath();
+        return EXCLUDED_PATHS.stream().anyMatch(path::startsWith);
     }
 
     private void setAuthentication(String accessToken) {

@@ -51,6 +51,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     annotationProcessor 'org.projectlombok:lombok'
 }
