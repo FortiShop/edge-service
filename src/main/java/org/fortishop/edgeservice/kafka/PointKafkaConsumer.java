@@ -15,7 +15,7 @@ public class PointKafkaConsumer {
 
     private final PointService pointService;
 
-    @KafkaListener(topics = "point.changed", groupId = "point-group")
+    @KafkaListener(topics = "point.changed", groupId = "point-group", containerFactory = "pointChangedKafkaListenerContainerFactory")
     public void consume(PointChangedEvent event) {
         log.info("[Kafka] Received point.changed: memberId={}, type={}, amount={}",
                 event.getMemberId(), event.getChangeType(), event.getAmount());
