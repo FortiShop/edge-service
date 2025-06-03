@@ -4,13 +4,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.fortishop.edgeservice.auth.PrincipalDetails;
 import org.fortishop.edgeservice.domain.Role;
-import org.fortishop.edgeservice.global.Responder;
 import org.fortishop.edgeservice.dto.request.MemberUpdateNicknameRequest;
 import org.fortishop.edgeservice.dto.request.PasswordUpdateRequest;
 import org.fortishop.edgeservice.dto.request.SignupRequest;
 import org.fortishop.edgeservice.dto.response.MemberPageResponse;
 import org.fortishop.edgeservice.dto.response.MemberResponse;
 import org.fortishop.edgeservice.dto.response.MemberUpdateNicknameResponse;
+import org.fortishop.edgeservice.global.Responder;
 import org.fortishop.edgeservice.service.MemberService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -83,7 +83,6 @@ public class MemberController {
                                                          @RequestParam(defaultValue = "20", name = "limit") int limit) {
         return Responder.success(memberService.getMembers(offset, limit));
     }
-
 
     @PatchMapping("/{id}/role")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
