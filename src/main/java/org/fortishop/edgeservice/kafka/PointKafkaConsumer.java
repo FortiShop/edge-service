@@ -6,6 +6,7 @@ import org.fortishop.edgeservice.domain.PointSourceService;
 import org.fortishop.edgeservice.dto.event.PointChangedEvent;
 import org.fortishop.edgeservice.service.PointService;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -16,7 +17,7 @@ public class PointKafkaConsumer {
     private final PointService pointService;
 
     @KafkaListener(topics = "point.changed", groupId = "point-group", containerFactory = "pointChangedKafkaListenerContainerFactory")
-    public void consume(PointChangedEvent event) {
+    public void consume(PointChangedEvent event, Acknowledgment ack) {
         log.info("[Kafka] Received point.changed: memberId={}, type={}, amount={}",
                 event.getMemberId(), event.getChangeType(), event.getAmount());
 
@@ -39,8 +40,16 @@ public class PointKafkaConsumer {
                 );
                 default -> log.warn("Unsupported changeType: {}", event.getChangeType());
             }
+            ack.acknowledge();
         } catch (Exception e) {
             log.error("Failed to handle point.changed event", e);
+            throw e;
         }
+    }
+
+    @KafkaListener(topics = "point.changed.dlq", groupId = "point-dlq-group")
+    public void handleDlq(PointChangedEvent event) {
+        log.error("[DLQ 메시지 확인] point.changed 처리 실패 : {}", event);
+        // slack 또는 이메일로 개발자, 관리자에게 알림
     }
 }
