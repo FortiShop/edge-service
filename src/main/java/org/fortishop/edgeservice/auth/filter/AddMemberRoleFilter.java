@@ -42,7 +42,9 @@ public class AddMemberRoleFilter implements Filter {
             String role = principalDetails.getRoleName();
             MutableHttpServletRequest mutableRequest = new MutableHttpServletRequest(httpRequest);
             mutableRequest.addHeader("x-member-role", role);
+            mutableRequest.addHeader("x-member-id", principalDetails.getId().toString());
             log.info("Member Role Set Complete :{}", role);
+            log.info("Member Id Set Complete :{}", principalDetails.getId().toString());
             chain.doFilter(mutableRequest, httpResponse);
             return;
         }
