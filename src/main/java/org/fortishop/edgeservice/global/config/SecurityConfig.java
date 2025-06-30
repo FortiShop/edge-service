@@ -9,8 +9,10 @@ import org.fortishop.edgeservice.auth.filter.CustomAuthenticationEntryPoint;
 import org.fortishop.edgeservice.auth.filter.JwtAuthenticationFilter;
 import org.fortishop.edgeservice.auth.filter.JwtVerificationFilter;
 import org.fortishop.edgeservice.auth.jwt.JwtTokenProvider;
+import org.fortishop.edgeservice.global.filter.RateLimitingFilter;
 import org.fortishop.edgeservice.global.redis.RedisService;
 import org.fortishop.edgeservice.service.RefreshTokenService;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -114,5 +116,15 @@ public class SecurityConfig {
                     .addFilter(jwtAuthenticationFilter)
                     .addFilterAfter(jwtVerificationFilter, JwtAuthenticationFilter.class);
         }
+    }
+
+    @Bean
+    public FilterRegistrationBean<RateLimitingFilter> rateLimitingFilterRegister(
+            RateLimitingFilter rateLimitingFilter) {
+        FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(rateLimitingFilter);
+        registration.setOrder(1);
+        registration.addUrlPatterns("/api/*");
+        return registration;
     }
 }
