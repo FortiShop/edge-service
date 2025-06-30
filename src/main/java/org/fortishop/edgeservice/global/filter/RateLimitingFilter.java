@@ -11,14 +11,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.fortishop.edgeservice.auth.jwt.JwtProperties;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class RateLimitingFilter extends OncePerRequestFilter {
@@ -69,16 +67,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
                 String.valueOf(now), String.valueOf(CAPACITY), String.valueOf(REFILL_RATE)
         );
 
-        log.info("🔄 Redis 스크립트 결과 (allowed=1이면 통과, 0이면 차단): {}", allowed);
-
         if (allowed == null || allowed == 0L) {
-            log.warn("❌ 요청 차단됨 (RateLimit 초과)");
             response.setStatus(429);
             response.getWriter().write("Too Many Requests");
             return;
         }
 
-        log.info("✅ 요청 허용됨, 필터 계속 진행");
         filterChain.doFilter(request, response);
     }
 

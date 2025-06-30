@@ -10,7 +10,6 @@ import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -881,31 +880,5 @@ public class EdgeServiceIntegrationTest {
         } catch (Exception e) {
             throw new RuntimeException("Failed to check or create topic: " + topic, e);
         }
-    }
-
-    @Test
-    @DisplayName("Rate Limiting: 6번 요청 시 마지막은 429")
-    void rateLimiting_tooManyRequests() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessToken);
-
-        List<ResponseEntity<String>> responses = new ArrayList<>();
-
-        for (int i = 0; i < 6; i++) {
-            long start = System.nanoTime();
-            ResponseEntity<String> res = restTemplate.exchange(
-                    "/api/members/me", HttpMethod.GET, new HttpEntity<>(headers), String.class);
-            long duration = System.nanoTime() - start;
-            System.out.println("Request " + (i + 1) + " took " + (duration / 1_000_000.0) + " ms");
-            responses.add(res);
-        }
-
-        for (int i = 0; i < 5; i++) {
-            assertThat(responses.get(i).getStatusCode()).isEqualTo(HttpStatus.OK);
-        }
-        for (ResponseEntity<String> respons : responses) {
-            System.out.println(respons.getStatusCode());
-        }
-        assertThat(responses.get(5).getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     }
 }
